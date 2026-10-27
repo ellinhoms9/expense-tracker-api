@@ -107,3 +107,261 @@ def test_delete_transaction(client):
     )
 
     assert get_response.status_code == 404
+
+
+def test_update_transaction(client):
+    create_response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "Food",
+            "description": "Lunch",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert create_response.status_code == 201
+    transaction_id = create_response.json()["id"]
+
+    update_response = client.patch(
+        f"/transactions/{transaction_id}",
+        json={
+            "amount": 150,
+            "description": "Dinner",
+        },
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.json()["amount"] == "150.00"
+    assert update_response.json()["description"] == "Dinner"
+    assert update_response.json()["category"] == "Food"
+
+
+
+def test_filter_transactions_by_category(client):
+    transactions = [
+        {
+            "amount": 100,
+            "category": "Food",
+            "description": "Lunch",
+            "transaction_date": "2026-10-20",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 200,
+            "category": "Transport",
+            "description": "Taxi",
+            "transaction_date": "2026-10-21",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 300,
+            "category": "Food",
+            "description": "Dinner",
+            "transaction_date": "2026-10-22",
+            "transaction_type": "expense",
+        },
+    ]
+
+    for transaction in transactions:
+        response = client.post("/transactions", json=transaction)
+        assert response.status_code == 201
+
+    response = client.get("/transactions", params={"category": "Food"})
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert all(
+        transaction["category"] == "Food"
+        for transaction in response.json()
+    )
+
+
+def test_filter_transactions_by_type(client):
+    transactions = [
+        {
+            "amount": 3000,
+            "category": "Salary",
+            "description": "Monthly salary",
+            "transaction_date": "2026-10-20",
+            "transaction_type": "income",
+        },
+        {
+            "amount": 500,
+            "category": "Food",
+            "description": "Groceries",
+            "transaction_date": "2026-10-21",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 200,
+            "category": "Transport",
+            "description": "Taxi",
+            "transaction_date": "2026-10-22",
+            "transaction_type": "expense",
+        },
+    ]
+
+    for transaction in transactions:
+        response = client.post("/transactions", json=transaction)
+        assert response.status_code == 201
+
+    response = client.get(
+        "/transactions",
+        params={"transaction_type": "expense"},
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert all(
+        transaction["transaction_type"] == "expense"
+        for transaction in response.json()
+    )
+
+
+def test_filter_transactions_by_date_range(client):
+    transactions = [
+        {
+            "amount": 100,
+            "category": "Food",
+            "description": "Before period",
+            "transaction_date": "2026-10-19",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 200,
+            "category": "Food",
+            "description": "Period start",
+            "transaction_date": "2026-10-20",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 300,
+            "category": "Transport",
+            "description": "Period end",
+            "transaction_date": "2026-10-25",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 400,
+            "category": "Food",
+            "description": "After period",
+            "transaction_date": "2026-10-26",
+            "transaction_type": "expense",
+        },
+    ]
+
+    for transaction in transactions:
+        response = client.post("/transactions", json=transaction)
+        assert response.status_code == 201
+
+    response = client.get(
+        "/transactions",
+        params={
+            "date_from": "2026-10-20",
+            "date_to": "2026-10-25",
+        },
+    )
+
+    assert response.status_code == 200
+
+    result = response.json()
+
+    assert len(result) == 2
+    assert {item["description"] for item in result} == {
+        "Period start",
+        "Period end",
+    }
+
+
+def test_summary_report(client):
+    transactions = [
+        {
+            "amount": 3000,
+            "category": "Salary",
+            "description": "Monthly salary",
+            "transaction_date": "2026-10-20",
+            "transaction_type": "income",
+        },
+        {
+            "amount": 500,
+            "category": "Food",
+            "description": "Groceries",
+            "transaction_date": "2026-10-21",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 200,
+            "category": "Transport",
+            "description": "Taxi",
+            "transaction_date": "2026-10-22",
+            "transaction_type": "expense",
+        },
+        {
+            "amount": 1000,
+            "category": "Salary",
+            "description": "Outside period",
+            "transaction_date": "2026-11-01",
+            "transaction_type": "income",
+        },
+    ]
+
+    for transaction in transactions:
+        response = client.post("/transactions", json=transaction)
+        assert response.status_code == 201
+
+    response = client.get(
+        "/reports/summary",
+        params={
+            "date_from": "2026-10-20",
+            "date_to": "2026-10-31",
+        },
+    )
+
+    assert response.status_code == 200
+
+    result = response.json()
+
+    assert float(result["total_income"]) == 3000.0
+    assert float(result["total_expenses"]) == 700.0
+    assert float(result["balance"]) == 2300.0
+
+
+
+def test_summary_rejects_invalid_date_range(client):
+    response = client.get(
+        "/reports/summary",
+        params={
+            "date_from": "2026-10-31",
+            "date_to": "2026-10-20",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "date_from must not be later than date_to"
+    )
+
+
+def test_filter_rejects_invalid_transaction_type(client):
+    response = client.get(
+        "/transactions",
+        params={"transaction_type": "gift"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "transaction_type must be income or expense"
+    )
+
+
+
+def test_update_missing_transaction_returns_404(client):
+    response = client.patch(
+        "/transactions/999",
+        json={"amount": 150},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Transaction not found"
