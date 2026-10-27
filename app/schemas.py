@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TransactionCreate(BaseModel):
@@ -11,6 +11,30 @@ class TransactionCreate(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     transaction_date: date
     transaction_type: Literal["income", "expense"]
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Category cannot be empty")
+
+        return value
+
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Description cannot be empty")
+
+        return value
 
 
 class TransactionUpdate(BaseModel):
@@ -25,6 +49,35 @@ class TransactionUpdate(BaseModel):
         min_length=1,
         max_length=100,
     )
+
+    @field_validator("category")
+    @classmethod
+    def validate_category(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Category cannot be empty")
+
+        return value
+
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        value = value.strip()
+
+        if not value:
+            raise ValueError("Description cannot be empty")
+
+        return value
+
+
     description: str | None = Field(default=None, max_length=500)
     transaction_date: date | None = None
     transaction_type: Literal["income", "expense"] | None = None

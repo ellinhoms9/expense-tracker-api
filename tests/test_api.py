@@ -365,3 +365,147 @@ def test_update_missing_transaction_returns_404(client):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Transaction not found"
+
+
+
+def test_reject_category_with_only_spaces(client):
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "   ",
+            "description": "Test",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_category_whitespace_is_stripped(client):
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "  Food  ",
+            "description": "Lunch",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["category"] == "Food"
+
+
+
+def test_update_rejects_category_with_only_spaces(client):
+    create_response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "Food",
+            "description": "Lunch",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert create_response.status_code == 201
+    transaction_id = create_response.json()["id"]
+
+    update_response = client.patch(
+        f"/transactions/{transaction_id}",
+        json={"category": "   "},
+    )
+
+    assert update_response.status_code == 422
+
+
+
+def test_reject_description_with_only_spaces(client):
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "Food",
+            "description": "   ",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_description_whitespace_is_stripped(client):
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "Food",
+            "description": "  Lunch  ",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["description"] == "Lunch"
+
+
+
+def test_update_rejects_description_with_only_spaces(client):
+    create_response = client.post(
+        "/transactions",
+        json={
+            "amount": 100,
+            "category": "Food",
+            "description": "Lunch",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert create_response.status_code == 201
+    transaction_id = create_response.json()["id"]
+
+    update_response = client.patch(
+        f"/transactions/{transaction_id}",
+        json={"description": "   "},
+    )
+
+    assert update_response.status_code == 422
+
+
+
+def test_reject_amount_with_more_than_two_decimal_places(client):
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": "10.999",
+            "category": "Food",
+            "description": "Test amount precision",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+
+def test_reject_amount_exceeding_max_digits(client):
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": "100000000.00",
+            "category": "Salary",
+            "description": "Amount exceeds allowed maximum",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "income",
+        },
+    )
+
+    assert response.status_code == 422
