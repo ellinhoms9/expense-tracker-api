@@ -1,4 +1,3 @@
-
 name: Run Tests
 
 on:
@@ -29,3 +28,13 @@ jobs:
         env:
           JWT_SECRET_KEY: "test-secret-key-for-ci-only"
         run: python -m pytest -v
+
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t expense-tracker-api .
