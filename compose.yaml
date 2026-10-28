@@ -1,0 +1,14 @@
+services:
+  api:
+    build: .
+    container_name: expense-tracker-container
+    ports:
+      - "8000:8000"
+    environment:
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      DATABASE_URL: sqlite:////app/data/expenses.db
+    volumes:
+      - expense_tracker_data:/app/data
+
+volumes:
+  expense_tracker_data:
