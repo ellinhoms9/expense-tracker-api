@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.security import get_current_user
 
 test_engine = create_engine(
     "sqlite://",
@@ -30,6 +31,7 @@ def override_get_db():
 
 
 app.dependency_overrides[get_db] = override_get_db
+assert get_current_user not in app.dependency_overrides
 
 
 @pytest.fixture
@@ -66,8 +68,9 @@ def client():
     Base.metadata.drop_all(bind=test_engine)
 
 
+def test_create_transaction_unauthorized(client):
+    client.headers.pop("Authorization", None)
 
-def test_create_transaction(client):
     response = client.post(
         "/transactions",
         json={
@@ -79,8 +82,7 @@ def test_create_transaction(client):
         },
     )
 
-    assert response.status_code == 201
-    assert response.json()["category"] == "Food"
+    assert response.status_code == 401
 
 
 def test_reject_negative_amount(client):
@@ -801,3 +803,134 @@ def test_summary_contains_only_current_users_transactions(client):
     assert response.status_code == 200
     assert response.json()["total_expenses"] == 0
 
+def test_get_db_closes_session():
+    from unittest.mock import MagicMock, patch
+
+    with patch("app.database.SessionLocal") as mock_session_local:
+        mock_db = MagicMock()
+        mock_session_local.return_value = mock_db
+
+        generator = get_db()
+        db = next(generator)
+
+        assert db is mock_db
+
+        generator.close()
+
+        mock_db.close.assert_called_once()
+
+def test_create_transaction_unauthorized(client):
+    client.headers.pop("Authorization", None)
+    response = client.post(
+        "/transactions",
+        json={
+            "amount": 250.50,
+            "category": "Food",
+            "description": "Lunch",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+
+    assert response.status_code == 401
+
+def test_login_user_wrong_password(client):
+    client.post(
+        "/auth/register",
+        json={
+            "email": "wrongpass@example.com",
+            "password": "TestPassword123",
+        },
+    )
+
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "wrongpass@example.com",
+            "password": "WrongPassword123",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+def test_invalid_token_returns_401(client):
+    client.headers["Authorization"] = "Bearer invalid-token"
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 401
+
+def test_token_without_subject_returns_401(client):
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+
+    from app.security import ALGORITHM, SECRET_KEY
+
+    token = jwt.encode(
+        {
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+    client.headers["Authorization"] = f"Bearer {token}"
+    response = client.get("/transactions")
+
+    assert response.status_code == 401
+
+def test_token_for_nonexistent_user_returns_401(client):
+    from app.security import create_access_token
+
+    token = create_access_token("missing-user@example.com")
+    client.headers["Authorization"] = f"Bearer {token}"
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 401
+
+def test_get_transactions_pagination(client):
+    for i in range(3):
+        response = client.post(
+            "/transactions",
+            json={
+                "amount": 100 + i,
+                "category": "Food",
+                "description": f"Transaction {i}",
+                "transaction_date": "2026-10-27",
+                "transaction_type": "expense",
+            },
+        )
+        assert response.status_code == 201
+
+    response = client.get("/transactions?limit=2&offset=1")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+
+def test_login_for_swagger(client):
+    response = client.post(
+        "/auth/token",
+        data={
+            "username": "pytest@example.com",
+            "password": "TestPassword123",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+    assert response.json()["token_type"] == "bearer"
+
+def test_login_for_swagger_wrong_password(client):
+    response = client.post(
+        "/auth/token",
+        data={
+            "username": "pytest@example.com",
+            "password": "WrongPassword123",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
