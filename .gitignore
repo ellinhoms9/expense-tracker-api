@@ -9,3 +9,16 @@ expenses.db
 
 .idea/
 **/.idea/
+# Local database files and backups
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Environment variables and secrets
+.env.*
+!.env.example
+
+# Python virtual environments
+venv/
+env/
