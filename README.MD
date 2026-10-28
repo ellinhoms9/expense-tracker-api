@@ -1,16 +1,19 @@
 # Expense Tracker API
 
-A REST API for tracking personal finances, built with Python and FastAPI.
+A RESTful API for managing personal finances, built with Python and FastAPI. The application supports user authentication, transaction management, filtering, pagination, and financial reports.
 
 ## Features
 
-- Create, retrieve, update, and delete transactions
-- Filter transactions by date, category, and type
-- Paginate transaction lists
-- Generate financial summaries for a selected period
-- Validate incoming data using Pydantic
-- Store transactions in an SQLite database
-- Automated API tests using pytest
+- **User authentication** — register and log in using email and password
+- **JWT authorization** — protect API endpoints using bearer tokens
+- **User data isolation** — users can access and manage only their own transactions
+- **Transaction management** — create, retrieve, update, and delete transactions
+- **Filtering** — filter transactions by date, category, and transaction type
+- **Pagination** — retrieve transaction lists in pages
+- **Financial reports** — generate summaries for a selected date range
+- **Data validation** — validate request data with Pydantic
+- **Database integration** — store users and transactions in SQLite using SQLAlchemy
+- **Automated testing** — test API functionality and access control using pytest
 
 ## Tech Stack
 
@@ -19,19 +22,26 @@ A REST API for tracking personal finances, built with Python and FastAPI.
 - SQLAlchemy
 - SQLite
 - Pydantic
+- PyJWT
+- pwdlib with Argon2 password hashing
 - pytest
 - HTTPX
 
 ## Getting Started
 
+### Prerequisites
+
+- Python 3.10 or newer
+- Git
+
 ### 1. Clone the repository
 
 ```bash
-git clone YOUR_REPOSITORY_URL
+git clone https://github.com/ellinhoms9/expense-tracker-api.git
 cd expense-tracker-api
 ```
 
-### 2. Create a virtual environment
+### 2. Create and activate a virtual environment
 
 ```bash
 python3 -m venv .venv
@@ -44,37 +54,116 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 4. Run the API
+### 4. Configure the environment
+
+Set a JWT secret key before starting the application:
+
+```bash
+export JWT_SECRET_KEY="$(openssl rand -hex 32)"
+```
+
+This command generates a secret key for the current terminal session. For production, use a securely managed secret that remains consistent across application restarts.
+
+**Important:** Never commit real secret keys or passwords to version control.
+
+### 5. Run the API
 
 ```bash
 python -m uvicorn app.main:app --reload
 ```
 
-### 5. Open API documentation
+The API will be available at:
 
-Visit http://127.0.0.1:8000/docs
+- API: http://127.0.0.1:8000
+- Interactive Swagger documentation: http://127.0.0.1:8000/docs
 
-## Run Tests
+## Authentication
 
-```bash
-python -m pytest -v
-```
+The API uses JSON Web Tokens (JWT) for authentication.
+
+1. Register a user using `POST /auth/register`.
+2. Log in using `POST /auth/login` to obtain an access token.
+3. Use the Swagger **Authorize** button to authenticate requests.
+4. Send the token as a bearer token when accessing protected endpoints.
+
+The Swagger OAuth2 authorization flow uses `POST /auth/token`.
+
+Passwords are hashed before being stored in the database.
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
+| POST | `/auth/register` | Register a new user |
+| POST | `/auth/login` | Authenticate using JSON credentials |
+| POST | `/auth/token` | Authenticate using OAuth2 form data |
 | POST | `/transactions` | Create a transaction |
-| GET | `/transactions` | List transactions |
+| GET | `/transactions` | List and filter transactions |
 | GET | `/transactions/{transaction_id}` | Retrieve a transaction |
 | PATCH | `/transactions/{transaction_id}` | Update a transaction |
 | DELETE | `/transactions/{transaction_id}` | Delete a transaction |
 | GET | `/reports/summary` | Generate a financial summary |
 
+Most transaction and report endpoints require authentication.
+
+## Example Request
+
+Create a transaction using an authenticated request:
+
+```http
+POST /transactions
+Authorization: Bearer YOUR_ACCESS_TOKEN
+Content-Type: application/json
+```
+
+```json
+{
+  "amount": 125.50,
+  "category": "Food",
+  "description": "Lunch",
+  "transaction_date": "2026-10-28",
+  "transaction_type": "expense"
+}
+```
+
+## Run Tests
+
+Set the JWT secret key and run the test suite:
+
+```bash
+export JWT_SECRET_KEY="$(openssl rand -hex 32)"
+python -m pytest -v
+```
+
+The test suite covers API functionality, authentication, and transaction access isolation between users.
+
+## Project Structure
+
+```text
+expense-tracker-api/
+├── app/
+│   ├── main.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── database.py
+│   └── security.py
+├── tests/
+│   └── test_api.py
+├── requirements.txt
+└── README.md
+```
+
 ## Project Status
 
-Core CRUD operations, transaction filtering, financial summaries, and initial automated tests are implemented.
+The core API functionality is implemented, including transaction CRUD operations, JWT authentication, user-specific data access, financial summaries, and automated tests.
 
-## License
+## Future Improvements
 
-MIT
+- Docker support
+- Continuous integration with GitHub Actions
+- API deployment
+- Additional test coverage and documentation
+
+## Author
+
+Developed as a backend portfolio project to demonstrate Python, FastAPI, REST API design, authentication, database integration, and automated testing.
