@@ -1,16 +1,15 @@
+import os
+from datetime import UTC, datetime, timedelta
+
+import jwt
 from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2AuthorizationCodeBearer, OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer
+from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pwdlib import PasswordHash
-
 from app.database import get_db
 from app.models import User
-
-import os
-import jwt
-from datetime import datetime, timedelta, timezone
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
@@ -32,7 +31,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(email: str) -> str:
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    expires_at = datetime.now(UTC) + timedelta(
         minutes=ACCESS_TOKEN_EXPIRE_MINUTES
     )
 
@@ -68,7 +67,7 @@ def get_current_user(
         if not isinstance(email, str) or not email:
             raise credentials_exception
     except jwt.InvalidTokenError:
-        raise credentials_exception
+        raise credentials_exception from None
 
     user = db.scalar(select(User).where(User.email == email))
 

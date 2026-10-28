@@ -65,3 +65,4 @@ websockets==17.3
 pwdlib==0.3.1
 PyJWT==2.15.1
 argon2-cffi==25.1.0
+ruff

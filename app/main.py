@@ -19,7 +19,13 @@ from app.schemas import (
     UserCreate,
     UserResponse,
 )
-from app.security import hash_password, create_access_token, verify_password, get_current_user
+from app.security import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    verify_password,
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -316,8 +322,8 @@ def get_summary(
         for transaction_type, amount in db.execute(query).all()
     }
 
-    income = totals.get("income", Decimal("0"))
-    expenses = totals.get("expense", Decimal("0"))
+    income = totals.get("income", Decimal(0))
+    expenses = totals.get("expense", Decimal(0))
 
     return {
         "date_from": date_from,
