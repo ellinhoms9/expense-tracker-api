@@ -167,3 +167,36 @@ The core API functionality is implemented, including transaction CRUD operations
 ## Author
 
 Developed as a backend portfolio project to demonstrate Python, FastAPI, REST API design, authentication, database integration, and automated testing.
+
+
+## Running with Docker
+
+### Prerequisites
+
+- Docker Desktop installed and running.
+
+### Start the application
+
+Set the JWT secret key in your terminal:
+
+```bash
+export JWT_SECRET_KEY="$(openssl rand -hex 32)"
+```
+
+Build and start the API:
+
+```bash
+docker compose up --build -d
+```
+
+Open the interactive API documentation:
+
+http://localhost:8000/docs
+
+### Stop the application
+
+```bash
+docker compose down
+```
+
+The SQLite database is stored in a persistent Docker volume, so the data survives container recreation. Do not use `docker compose down -v` unless you intentionally want to remove the volume.
