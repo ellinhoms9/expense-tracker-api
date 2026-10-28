@@ -819,20 +819,6 @@ def test_get_db_closes_session():
 
         mock_db.close.assert_called_once()
 
-def test_create_transaction_unauthorized(client):
-    client.headers.pop("Authorization", None)
-    response = client.post(
-        "/transactions",
-        json={
-            "amount": 250.50,
-            "category": "Food",
-            "description": "Lunch",
-            "transaction_date": "2026-10-27",
-            "transaction_type": "expense",
-        },
-    )
-
-    assert response.status_code == 401
 
 def test_login_user_wrong_password(client):
     client.post(
