@@ -1,8 +1,9 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, Integer, Numeric, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Date, Integer, Numeric, String, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 
 from app.database import Base
 
@@ -39,4 +40,45 @@ class Transaction(Base):
     transaction_type: Mapped[str] = mapped_column(
         String(10),
         nullable=False,
+    )
+
+
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+
+    user: Mapped["User"] = relationship(
+        back_populates="transactions"
+    )
+
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    email: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        index=True,
+        nullable=False,
+    )
+
+    hashed_password: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+
+    transactions: Mapped[list["Transaction"]] = relationship(
+        back_populates="user"
     )

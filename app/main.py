@@ -4,13 +4,22 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
-from app.models import Transaction
-from app.schemas import TransactionCreate, TransactionResponse, TransactionUpdate
-
+from app.models import Transaction, User
+from app.schemas import (
+    LoginRequest,
+    Token,
+    TransactionCreate,
+    TransactionResponse,
+    TransactionUpdate,
+    UserCreate,
+    UserResponse,
+)
+from app.security import hash_password, create_access_token, verify_password, get_current_user
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,27 +42,107 @@ def root():
     return {"message": "Expense Tracker API is running"}
 
 
-@app.post(
-    "/transactions",
-    response_model=TransactionResponse,
-    status_code=201,
-)
+@app.post("/auth/register", response_model=UserResponse, status_code=201)
+def register_user(data: UserCreate, db: DbSession):
+    normalized_email = str(data.email).lower()
+
+    existing_user = db.scalar(
+        select(User).where(User.email == normalized_email)
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=409,
+            detail="Email already registered",
+        )
+
+    user = User(
+        email=normalized_email,
+        hashed_password=hash_password(data.password),
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+
+
+@app.post("/auth/login", response_model=Token)
+def login_user(data: LoginRequest, db: DbSession):
+    normalized_email = str(data.email).lower()
+
+    user = db.scalar(
+        select(User).where(User.email == normalized_email)
+    )
+
+    if user is None or not verify_password(
+        data.password, user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(user.email)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+
+@app.post("/auth/token", response_model=Token)
+def login_for_swagger(
+    db: DbSession,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    normalized_email = form_data.username.lower()
+
+    user = db.scalar(
+        select(User).where(User.email == normalized_email)
+    )
+
+    if user is None or not verify_password(
+        form_data.password, user.hashed_password
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token = create_access_token(user.email)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+
+@app.post("/transactions", response_model=TransactionResponse, status_code=201)
 def create_transaction(
     data: TransactionCreate,
     db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
-    transaction = Transaction(**data.model_dump())
-
+    transaction = Transaction(
+        **data.model_dump(),
+        user_id=current_user.id,
+    )
     db.add(transaction)
     db.commit()
     db.refresh(transaction)
-
     return transaction
+
 
 
 @app.get("/transactions", response_model=list[TransactionResponse])
 def get_transactions(
     db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
     date_from: date | None = None,
     date_to: date | None = None,
     category: str | None = None,
@@ -62,6 +151,7 @@ def get_transactions(
     offset: int = Query(default=0, ge=0),
 ):
     query = select(Transaction)
+    query = query.where(Transaction.user_id == current_user.id)
 
     if date_from and date_to and date_from > date_to:
         raise HTTPException(
@@ -103,25 +193,49 @@ def get_transactions(
 
 
 @app.get("/transactions/{transaction_id}", response_model=TransactionResponse)
-def get_transaction(transaction_id: int, db: DbSession):
-    transaction = db.get(Transaction, transaction_id)
+
+def get_transaction(
+    transaction_id: int,
+    db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == current_user.id,
+        )
+    )
 
     if transaction is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Transaction not found",
+        )
 
     return transaction
 
 
+
 @app.patch("/transactions/{transaction_id}", response_model=TransactionResponse)
+
 def update_transaction(
     transaction_id: int,
     data: TransactionUpdate,
     db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
-    transaction = db.get(Transaction, transaction_id)
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == current_user.id,
+        )
+    )
 
     if transaction is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Transaction not found",
+        )
 
     changes = data.model_dump(exclude_unset=True)
 
@@ -146,12 +260,26 @@ def update_transaction(
     return transaction
 
 
+
 @app.delete("/transactions/{transaction_id}", status_code=204)
-def delete_transaction(transaction_id: int, db: DbSession):
-    transaction = db.get(Transaction, transaction_id)
+
+def delete_transaction(
+    transaction_id: int,
+    db: DbSession,
+    current_user: Annotated[User, Depends(get_current_user)],
+):
+    transaction = db.scalar(
+        select(Transaction).where(
+            Transaction.id == transaction_id,
+            Transaction.user_id == current_user.id,
+        )
+    )
 
     if transaction is None:
-        raise HTTPException(status_code=404, detail="Transaction not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Transaction not found",
+        )
 
     db.delete(transaction)
     db.commit()
@@ -159,11 +287,14 @@ def delete_transaction(transaction_id: int, db: DbSession):
     return Response(status_code=204)
 
 
+
 @app.get("/reports/summary")
+
 def get_summary(
     db: DbSession,
     date_from: date,
     date_to: date,
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     if date_from > date_to:
         raise HTTPException(
@@ -175,6 +306,7 @@ def get_summary(
         Transaction.transaction_type,
         func.coalesce(func.sum(Transaction.amount), 0),
     ).where(
+        Transaction.user_id == current_user.id,
         Transaction.transaction_date >= date_from,
         Transaction.transaction_date <= date_to,
     ).group_by(Transaction.transaction_type)

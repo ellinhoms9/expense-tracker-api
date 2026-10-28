@@ -39,9 +39,33 @@ def client():
     Base.metadata.create_all(bind=test_engine)
 
     with TestClient(app) as test_client:
+        response = test_client.post(
+            "/auth/register",
+            json={
+                "email": "pytest@example.com",
+                "password": "TestPassword123",
+            },
+        )
+        assert response.status_code == 201
+
+        login_response = test_client.post(
+            "/auth/login",
+            json={
+                "email": "pytest@example.com",
+                "password": "TestPassword123",
+            },
+        )
+        assert login_response.status_code == 200
+
+        token = login_response.json()["access_token"]
+        test_client.headers.update(
+            {"Authorization": f"Bearer {token}"}
+        )
+
         yield test_client
 
     Base.metadata.drop_all(bind=test_engine)
+
 
 
 def test_create_transaction(client):
@@ -509,3 +533,272 @@ def test_reject_amount_exceeding_max_digits(client):
     )
 
     assert response.status_code == 422
+
+
+
+def test_register_user(client):
+    response = client.post(
+        "/auth/register",
+        json={
+            "email": "newuser@example.com",
+            "password": "TestPassword123",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["email"] == "newuser@example.com"
+    assert "hashed_password" not in response.json()
+
+
+
+def test_login_user(client):
+    client.post(
+        "/auth/register",
+        json={
+            "email": "loginuser@example.com",
+            "password": "TestPassword123",
+        },
+    )
+
+    response = client.post(
+        "/auth/login",
+        json={
+            "email": "loginuser@example.com",
+            "password": "TestPassword123",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+    assert response.json()["token_type"] == "bearer"
+
+
+
+def test_user_cannot_access_another_users_transaction(client):
+    # Створюємо транзакцію першого користувача
+    transaction_response = client.post(
+        "/transactions/",
+        json={
+            "amount": 150,
+            "category": "Food",
+            "description": "Private expense",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+    assert transaction_response.status_code == 201
+
+    transaction_id = transaction_response.json()["id"]
+
+    # Реєструємо другого користувача
+    register_response = client.post(
+        "/auth/register",
+        json={
+            "email": "second@example.com",
+            "password": "SecondPassword123",
+        },
+    )
+    assert register_response.status_code == 201
+
+    # Авторизуємо другого користувача
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": "second@example.com",
+            "password": "SecondPassword123",
+        },
+    )
+    assert login_response.status_code == 200
+
+    second_token = login_response.json()["access_token"]
+
+    # Другий користувач намагається отримати чужу транзакцію
+    response = client.get(
+        f"/transactions/{transaction_id}",
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 404
+
+
+
+def test_user_cannot_update_another_users_transaction(client):
+    transaction_response = client.post(
+        "/transactions/",
+        json={
+            "amount": 150,
+            "category": "Food",
+            "description": "Private expense",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+    assert transaction_response.status_code == 201
+    transaction_id = transaction_response.json()["id"]
+
+    client.post(
+        "/auth/register",
+        json={
+            "email": "update_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": "update_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    assert login_response.status_code == 200
+
+    second_token = login_response.json()["access_token"]
+
+    response = client.patch(
+        f"/transactions/{transaction_id}",
+        json={"description": "Hacked expense"},
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_user_cannot_delete_another_users_transaction(client):
+    transaction_response = client.post(
+        "/transactions/",
+        json={
+            "amount": 150,
+            "category": "Food",
+            "description": "Private expense",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+    assert transaction_response.status_code == 201
+    transaction_id = transaction_response.json()["id"]
+
+    client.post(
+        "/auth/register",
+        json={
+            "email": "delete_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": "delete_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    assert login_response.status_code == 200
+
+    second_token = login_response.json()["access_token"]
+
+    response = client.delete(
+        f"/transactions/{transaction_id}",
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 404
+
+
+
+def test_user_sees_only_own_transactions(client):
+    # Перший користувач створює транзакцію
+    transaction_response = client.post(
+        "/transactions/",
+        json={
+            "amount": 150,
+            "category": "Food",
+            "description": "First user's expense",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+    assert transaction_response.status_code == 201
+
+    # Реєструємо другого користувача
+    register_response = client.post(
+        "/auth/register",
+        json={
+            "email": "list_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    assert register_response.status_code == 201
+
+    # Входимо під другим користувачем
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": "list_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    assert login_response.status_code == 200
+
+    second_token = login_response.json()["access_token"]
+
+    # Отримуємо список транзакцій другого користувача
+    response = client.get(
+        "/transactions/",
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+
+def test_summary_contains_only_current_users_transactions(client):
+    # Перший користувач створює витрату
+    transaction_response = client.post(
+        "/transactions/",
+        json={
+            "amount": 150,
+            "category": "Food",
+            "description": "First user's expense",
+            "transaction_date": "2026-10-27",
+            "transaction_type": "expense",
+        },
+    )
+    assert transaction_response.status_code == 201
+
+    # Реєструємо другого користувача
+    register_response = client.post(
+        "/auth/register",
+        json={
+            "email": "summary_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    assert register_response.status_code == 201
+
+    # Авторизуємо другого користувача
+    login_response = client.post(
+        "/auth/login",
+        json={
+            "email": "summary_test@example.com",
+            "password": "TestPassword123",
+        },
+    )
+    assert login_response.status_code == 200
+
+    second_token = login_response.json()["access_token"]
+
+    # Другий користувач отримує власний звіт
+
+    response = client.get(
+        "/reports/summary",
+        params={
+            "date_from": "2026-10-01",
+            "date_to": "2026-10-31",
+        },
+
+        headers={"Authorization": f"Bearer {second_token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total_expenses"] == 0
+
